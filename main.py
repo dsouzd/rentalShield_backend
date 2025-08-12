@@ -7,9 +7,12 @@ from app.auth.routes import router as auth_router
 
 load_dotenv()
 
-Base.metadata.create_all(bind=engine)
-
 app = FastAPI()
+
+@app.on_event("startup")
+async def startup():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
