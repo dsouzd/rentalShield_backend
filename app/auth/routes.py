@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from pydantic import BaseModel
 from app.database.connection import get_db
 from app.models.user import User, UserType
@@ -19,8 +20,9 @@ class UserLogin(BaseModel):
     password: str
 
 @router.post("/register")
-def register(user: UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(User).filter(User.email == user.email).first()
+async def register(user: UserCreate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).filter(User.email == user.email))
+    db_user = result.scalar_one_or_none()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
     
@@ -37,14 +39,14 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
         hashed_password=hashed_password
     )
     db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
+    await db.commit()
+    await db.refresh(db_user)
     
     return {"message": "User created successfully", "unique_id": db_user.unique_id}
 
 @router.post("/login")
-def login(user: UserLogin, db: Session = Depends(get_db)):
-    authenticated_user = authenticate_user(db, user.email, user.password)
+async def login(user: UserLogin, db: AsyncSession = Depends(get_db)):
+    authenticated_user = await authenticate_user(db, user.email, user.password)
     if not authenticated_user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -55,7 +57,7 @@ def login(user: UserLogin, db: Session = Depends(get_db)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/profile")
-def get_profile(current_user: User = Depends(get_current_user)):
+async def get_profile(current_user: User = Depends(get_current_user)):
     return {
         "unique_id": current_user.unique_id,
         "name": current_user.name,
